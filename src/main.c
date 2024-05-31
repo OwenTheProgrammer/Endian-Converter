@@ -2,59 +2,70 @@
 #include "fileCommon.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-//Usage: <exe> <16|32> <input file> <output file>
+//Gets the amount of bytes up to the next stride
+int getAlignmentPadding(int fileSize, int byteStride) {
+	return (byteStride - fileSize) & (byteStride - 1);
+}
+
+//Usage: <exe> <16|32|64> <input file> <output file>
 int main(int argc, const char* argv[]) {
 	if(argc != 4) {
-		printf("Usage: <exe> <stride: 16|32> <inputPath> <outputPath>\n");
+		printf("Usage: <exe> <stride: 16|32|64> <inputPath> <outputPath>\n");
 		return 0;
 	}
-	int stride = atoi(argv[1]);
+	int bitStride = atoi(argv[1]);
 	const char* inputPath = argv[2];
 	const char* outputPath = argv[3];
 
-	//Read the input file
-	char* buffer;
-	int bufferSize;
-	if(readToBuffer(&buffer, &bufferSize, inputPath)) {
+	//Open the input file and get its length in bytes
+	FILE* inputFile;
+	if(openFile(&inputFile, inputPath, "rb")) {
 		return -1;
 	}
+	int bufferSize = getFileSize(inputFile);
 
-	if(stride == 16 && bufferSize & 1) {
-		fprintf(stderr, "File wont align correctly to 16 bit pages. (%i bytes)\n", bufferSize);
-		return -2;
+	//Calculate how many bytes should be added to the end for alignment
+	int byteStride = bitStride / 8;
+	int eofPadding = getAlignmentPadding(bufferSize, byteStride);
+	int outFileSize = bufferSize + eofPadding;
+	if(eofPadding) {
+		printf("Unaligned file size (%iB) padding with %iB to get (%iB)\n", bufferSize, eofPadding, outFileSize);
 	}
-	if(stride == 32 && bufferSize & 3) {
-		fprintf(stderr, "File wont align correctly to 32 bit pages. (%i bytes)\n", bufferSize);
-		return -2;
-	}
+	//Read file with extended padding if needed
+	char* inputBuffer = readFile(inputFile, outFileSize);
+	//Zero pad the ending of the buffer
+	memset(inputBuffer + bufferSize, 0, eofPadding);
 
-	char* converted = (char*)malloc(bufferSize);
-	
-	uint16_t* in_ptr16 = (uint16_t*)buffer;
-	uint32_t* in_ptr32 = (uint32_t*)buffer;
+	//Calculate element count
+	int elements = outFileSize / byteStride;
+	char* outputBuffer = (char*)malloc(outFileSize);
+	printf("Converting %i elements..\n", elements);
 
-	uint16_t* out_ptr16 = (uint16_t*)converted;
-	uint32_t* out_ptr32 = (uint32_t*)converted;
-	
-	int elementCount = bufferSize / (stride / 8);
-	for(int i = 0; i < elementCount; i++) {
-		if(stride == 16) {
-			out_ptr16[i] = swap16(in_ptr16[i]);
-		} else {
-			out_ptr32[i] = swap32(in_ptr32[i]);
+	for(int i = 0; i < elements; i++) {
+		int offset = i * byteStride;
+
+		char* in_ptr = inputBuffer + offset;
+		char* out_ptr = outputBuffer + offset;
+
+		//Swap based on stride
+		switch(byteStride) {
+			case 2: *(uint16_t*)out_ptr = ENDIAN_SWAP(*(uint16_t*)in_ptr);	break;
+			case 4: *(uint32_t*)out_ptr = ENDIAN_SWAP(*(uint32_t*)in_ptr);	break;
+			case 8: *(uint64_t*)out_ptr = ENDIAN_SWAP(*(uint64_t*)in_ptr);	break;
+			default: 
+				fprintf(stderr, "invalid conversion stride %i\n", bitStride);
+				return -4;
 		}
 	}
-	free(buffer);
+	free(inputBuffer);
 	
-	FILE* outputFile;
-	if(openFile(&outputFile, outputPath, "wb")) {
+	if(writeFile(outputBuffer, outFileSize, outputPath)) {
 		return -3;
 	}
-	fwrite(converted, sizeof(char), bufferSize, outputFile);
-	fflush(outputFile);
-	fclose(outputFile);
-	free(converted);
+	free(outputBuffer);
+
 	printf("Exported file successfully.\n");
 	return 0;
 }

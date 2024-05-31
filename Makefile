@@ -5,7 +5,7 @@ BINARY		= endianConv
 SRC_DIR		= src
 OBJ_DIR		= obj
 
-.PHONY: build release debug clean
+.PHONY: build release debug clean test
 
 SRC_FILES = $(wildcard $(SRC_DIR)/*.c)	#Get all .c files from src/
 OBJ_FILES = $(SRC_FILES:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)	#Abstract all .c files to .o files
@@ -36,3 +36,13 @@ clean:
 	if exist "$(OBJ_DIR)/" del $(OBJ_DIR)\*.o
 	if exist "$(OBJ_DIR)/" rmdir $(OBJ_DIR) > nul
 	if exist "$(BINARY).exe" del $(BINARY).exe
+	del tests\*.out
+
+test: build | $(OBJ_FILES) $(BINARY)
+	$(BINARY).exe 16 tests/test_aligned.bin tests/aligned_16.out
+	$(BINARY).exe 32 tests/test_aligned.bin tests/aligned_32.out
+	$(BINARY).exe 64 tests/test_aligned.bin tests/aligned_64.out
+
+	$(BINARY).exe 16 tests/test_unaligned.bin tests/unaligned_16.out
+	$(BINARY).exe 32 tests/test_unaligned.bin tests/unaligned_32.out
+	$(BINARY).exe 64 tests/test_unaligned.bin tests/unaligned_64.out
