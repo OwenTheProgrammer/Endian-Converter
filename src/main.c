@@ -35,6 +35,7 @@ int main(int argc, const char* argv[]) {
 	}
 	//Read file with extended padding if needed
 	char* inputBuffer = readFile(inputFile, outFileSize);
+	fclose(inputFile);
 	//Zero pad the ending of the buffer
 	memset(inputBuffer + bufferSize, 0, eofPadding);
 
